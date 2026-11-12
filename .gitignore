@@ -21,3 +21,5 @@ scripts/t_*.ps1
 
 # 本地开发笔记
 RESUME.md
+
+android/build/
