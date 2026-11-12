@@ -1,7 +1,10 @@
 package com.yueyin.wechataway;
 
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -42,6 +45,17 @@ public class MainActivity extends Activity {
     private static final String TAILSCALE_PACKAGE = "com.tailscale.ipn";
     private static final String ACTION_CONNECT = "com.tailscale.ipn.CONNECT_VPN";
     private static final String ACTION_DISCONNECT = "com.tailscale.ipn.DISCONNECT_VPN";
+
+    /** 看门狗节奏：每 5 秒续一次，闹钟本身设 15 秒后。 */
+    private static final long WATCHDOG_TICK_MS = 5000L;
+    private static final long WATCHDOG_WINDOW_MS = 15000L;
+    private final android.os.Handler watchdogHandler = new android.os.Handler();
+    private final Runnable watchdogRunnable = new Runnable() {
+        @Override
+        public void run() {
+            watchdogTick();
+        }
+    };
 
     private WebView web;
     private int retryLeft = 0;
@@ -214,13 +228,48 @@ public class MainActivity extends Activity {
                 }
             }, 2500);
         }
+        startWatchdog();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        stopWatchdog();
         // 离开 App 就断开，避免 VPN 常驻耗电。
         sendVpnCommand(ACTION_DISCONNECT);
+    }
+
+    /**
+     * 看门狗：只要 App 还活着就每 5 秒把"断连闹钟"推到 15 秒后。
+     * 进程被划掉 / 被杀，最后一次闹钟到点就断开 VPN —— 这样即使 onStop 没跑，
+     * VPN 最多也只多活十几秒。
+     */
+    private void startWatchdog() {
+        stopWatchdog();
+        watchdogTick();
+    }
+
+    private void watchdogTick() {
+        alarmManager().cancel(disconnectIntent());
+        alarmManager().set(AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + WATCHDOG_WINDOW_MS, disconnectIntent());
+        watchdogHandler.removeCallbacks(watchdogRunnable);
+        watchdogHandler.postDelayed(watchdogRunnable, WATCHDOG_TICK_MS);
+    }
+
+    private void stopWatchdog() {
+        watchdogHandler.removeCallbacks(watchdogRunnable);
+        alarmManager().cancel(disconnectIntent());
+    }
+
+    private AlarmManager alarmManager() {
+        return (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+    }
+
+    private PendingIntent disconnectIntent() {
+        Intent intent = new Intent(this, DisconnectReceiver.class);
+        return PendingIntent.getBroadcast(this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     /** 给 Tailscale 发连接/断开广播；没装就静默失败。 */
