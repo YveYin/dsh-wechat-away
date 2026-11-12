@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
 
     /** 看门狗节奏：每 5 秒续一次，闹钟本身设 15 秒后。 */
     private static final long WATCHDOG_TICK_MS = 5000L;
-    private static final long WATCHDOG_WINDOW_MS = 15000L;
+    private static final long WATCHDOG_WINDOW_MS = 45000L;
     private final android.os.Handler watchdogHandler = new android.os.Handler();
     private final Runnable watchdogRunnable = new Runnable() {
         @Override
