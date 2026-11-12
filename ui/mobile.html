@@ -91,6 +91,9 @@
   <div class="card">
     <div class="row"><span class="dot" id="stateDot"></span><span class="state" id="stateText">读取中…</span></div>
     <div class="meta" id="stateMeta"></div>
+    <div class="hint" style="margin-top:8px">称呼：<b id="ownerShown">—</b>
+      <button id="btnRename" type="button" style="display:inline-block;width:auto;margin:0 0 0 8px;padding:4px 10px;font-size:12px;background:#1f2937;border:1px solid #374151">改称呼</button>
+    </div>
     <div id="heartbeatWarn" class="preview bad hidden">电脑上的 DSH 好像没在运行，点了会先尝试唤起它。</div>
   </div>
 
@@ -262,6 +265,7 @@
       // 正在填值守流程时不要被首页抢回来。
     }
     $('btnStop').disabled = !on;
+    if ($('ownerShown')) $('ownerShown').textContent = st.ownerName || '（还没设置）';
     if (st.summary) {
       renderSummary(st.summary);
       $('summaryCard').classList.remove('hidden');
@@ -318,6 +322,13 @@
   }
 
   // ---- 交互 ----
+  $('btnRename').addEventListener('click', function () {
+    $('ownerInput').value = (state.status && state.status.ownerName) || '';
+    show($('setup'), true);
+    show($('home'), false);
+    $('ownerInput').focus();
+  });
+
   $('ownerSave').addEventListener('click', function () {
     var name = $('ownerInput').value.trim();
     if (name === '') { toast('先填一个称呼', true); return }
