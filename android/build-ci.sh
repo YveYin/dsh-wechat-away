@@ -35,6 +35,7 @@ echo '[2/6] 链接资源'
   -o "$OUT/base-unsigned.apk" \
   -I "$AJAR" \
   --manifest "$APP/AndroidManifest.xml" \
+  -A "$APP/assets" \
   --java "$OUT/gen" \
   --min-sdk-version 24 \
   --target-sdk-version 34 \

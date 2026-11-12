@@ -23,6 +23,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.ProgressBar;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -58,6 +61,7 @@ public class MainActivity extends Activity {
     };
 
     private WebView web;
+    private View loadingOverlay;
     private int retryLeft = 0;
 
     /** 隧道建立要十几秒，页面加载失败时按退避重试几次，别一上来就甩错误页。 */
@@ -89,10 +93,27 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                if (loadingOverlay != null && url != null && !url.startsWith("about:")) {
+                    loadingOverlay.animate().alpha(0f).setDuration(180).withEndAction(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (loadingOverlay != null) {
+                                loadingOverlay.setVisibility(View.GONE);
+                                loadingOverlay.setAlpha(1f);
+                            }
+                        }
+                    }).start();
+                }
+            }
+
+            @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (!request.isForMainFrame()) {
                     return;
                 }
+                // 隧道还没起来时 WebView 会画自己那张白底错误页，用我们的遮罩盖住它。
+                showLoading();
                 int index = RETRY_DELAYS_MS.length - retryLeft;
                 if (retryLeft > 0 && index >= 0 && index < RETRY_DELAYS_MS.length) {
                     retryLeft--;
@@ -115,14 +136,77 @@ public class MainActivity extends Activity {
 
         root.addView(web, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        loadingOverlay = buildLoadingView();
+        root.addView(loadingOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         setContentView(root);
 
         String saved = prefs().getString(KEY_URL, "").trim();
         if (saved.isEmpty()) {
             showSettings(true);
         } else {
+            showLoading();
             web.loadUrl(saved);
         }
+    }
+
+    /** 连接期的遮罩：盖住 WebView 自己的白底错误页，同时告诉用户发生了什么。 */
+    private void showLoading() {
+        if (loadingOverlay == null) {
+            return;
+        }
+        loadingOverlay.setAlpha(1f);
+        loadingOverlay.setVisibility(View.VISIBLE);
+    }
+
+    private View buildLoadingView() {
+        float d = getResources().getDisplayMetrics().density;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(Color.parseColor("#0B0D11"));
+        box.setPadding((int) (28 * d), (int) (28 * d), (int) (28 * d), (int) (28 * d));
+
+        // 品牌图标：圆角方块 + 气泡
+        TextView mark = new TextView(this);
+        mark.setText("\uD83D\uDCAC");
+        mark.setTextSize(34f);
+        mark.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams((int) (72 * d), (int) (72 * d));
+        markLp.bottomMargin = (int) (20 * d);
+        mark.setLayoutParams(markLp);
+        mark.setBackgroundColor(Color.parseColor("#1B2230"));
+        box.addView(mark);
+
+        ProgressBar bar = new ProgressBar(this);
+        bar.setIndeterminate(true);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams((int) (28 * d), (int) (28 * d));
+        barLp.bottomMargin = (int) (16 * d);
+        bar.setLayoutParams(barLp);
+        box.addView(bar);
+
+        TextView title = new TextView(this);
+        title.setText("正在连接电脑…");
+        title.setTextSize(16f);
+        title.setTextColor(Color.parseColor("#E8ECF3"));
+        title.setGravity(Gravity.CENTER);
+        box.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText("首次连接要等十几秒，连上后会自动打开");
+        sub.setTextSize(13f);
+        sub.setTextColor(Color.parseColor("#8D99AB"));
+        sub.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = (int) (8 * d);
+        sub.setLayoutParams(subLp);
+        box.addView(sub);
+
+        return box;
     }
 
     private SharedPreferences prefs() {
@@ -166,6 +250,7 @@ public class MainActivity extends Activity {
                             url = "http://" + url;
                         }
                         prefs().edit().putString(KEY_URL, url).apply();
+                        showLoading();
                         web.loadUrl(url);
                     }
                 })
