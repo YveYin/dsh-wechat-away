@@ -4,53 +4,39 @@
 <meta name="theme-color" content="#0F1115">
 <title>微信值守</title>
 <style>
-  :root{
-    --bg:#0B0D11; --card:#141922; --line:#222A36;
-    --fg:#E8ECF3; --muted:#8D99AB; --brand:#4F7CFF; --brand-dim:#2A3A63;
-  }
+  :root{--bg:#0B0D11;--card:#141922;--line:#222A36;--fg:#E8ECF3;--muted:#8D99AB}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  html,body{margin:0;padding:0;height:100%}
   body{
-    margin:0;background:radial-gradient(120% 80% at 50% 0%,#141A26 0%,var(--bg) 60%);
-    color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",sans-serif;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:32px 24px calc(32px + env(safe-area-inset-bottom));
+    background:radial-gradient(120% 80% at 50% 0%,#141A26 0%,var(--bg) 60%);
+    color:var(--fg);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",sans-serif;
   }
-  .mark{
-    width:76px;height:76px;border-radius:22px;margin-bottom:22px;
-    background:linear-gradient(160deg,#3C63D8,#25408F);
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 14px 34px rgba(37,64,143,.45),inset 0 1px 0 rgba(255,255,255,.16);
+  .wrap{
+    max-width:392px;margin:0 auto;padding:40px 20px calc(40px + env(safe-area-inset-bottom));
+    min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
   }
+  .mark{width:76px;height:76px;border-radius:22px;background:linear-gradient(160deg,#3C63D8,#25408F);
+    display:flex;align-items:center;justify-content:center;margin-bottom:22px;
+    box-shadow:0 14px 34px rgba(37,64,143,.45),inset 0 1px 0 rgba(255,255,255,.16)}
   .mark svg{width:40px;height:40px;display:block}
   h1{font-size:19px;font-weight:600;margin:0 0 8px;letter-spacing:.2px}
-  p.desc{margin:0;color:var(--muted);font-size:14px;text-align:center;max-width:300px}
-  .card{
-    width:100%;max-width:360px;margin-top:26px;background:var(--card);
-    border:1px solid var(--line);border-radius:16px;padding:14px 16px 16px;
-  }
-  .card .label{font-size:12px;color:var(--muted);margin-bottom:6px}
-  .card .url{
-    font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#A8C0FF;
-    word-break:break-all;
-  }
+  p.desc{margin:0;color:var(--muted);font-size:14px;max-width:300px}
+  .card{width:100%;margin-top:26px;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:14px 16px 16px;text-align:left}
+  .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .url{font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#A8C0FF;word-break:break-all}
   .hint{margin-top:10px;font-size:12.5px;color:var(--muted);line-height:1.55}
-  .actions{width:100%;max-width:360px;margin-top:22px;display:flex;flex-direction:column;gap:11px}
-  button{
-    appearance:none;border:0;border-radius:14px;padding:15px 18px;font-size:15.5px;
-    font-weight:600;letter-spacing:.2px;width:100%;
-    background:linear-gradient(180deg,#5B86FF,#3E6BEF);color:#fff;
-    box-shadow:0 8px 22px rgba(62,107,239,.32);
-  }
-  button:active{transform:translateY(1px);box-shadow:0 4px 14px rgba(62,107,239,.28)}
-  button.ghost{
-    background:#171D27;color:#C7D1E0;border:1px solid var(--line);box-shadow:none;font-weight:500;
-  }
-  button.ghost:active{background:#1D2431}
-  .foot{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));text-align:center;
-    font-size:11.5px;color:#4E5A6C;letter-spacing:.4px}
+  .actions{width:100%;margin-top:22px;display:flex;flex-direction:column;gap:11px}
+  button{appearance:none;border:0;border-radius:14px;padding:15px 18px;font-size:15.5px;font-weight:600;
+    width:100%;background:linear-gradient(180deg,#5B86FF,#3E6BEF);color:#fff;
+    box-shadow:0 8px 22px rgba(62,107,239,.32)}
+  button.ghost{background:#171D27;color:#C7D1E0;border:1px solid var(--line);box-shadow:none;font-weight:500}
+  .foot{margin-top:34px;font-size:11.5px;color:#4E5A6C;letter-spacing:.4px}
 </style>
 
+<div class="wrap">
 <div class="mark">
   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8A2.5 2.5 0 0 1 17.5 17H12l-4.6 3.2c-.5.4-1.4 0-1.4-.7V17H6.5A2.5 2.5 0 0 1 4 14.5v-8Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>
@@ -74,6 +60,7 @@
 </div>
 
 <div class="foot">微信值守</div>
+</div>
 
 <script>
   var tries = 0;
