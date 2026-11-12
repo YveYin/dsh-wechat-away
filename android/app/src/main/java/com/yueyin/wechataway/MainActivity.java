@@ -2,22 +2,21 @@ package com.yueyin.wechataway;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.CookieManager;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -27,8 +26,11 @@ import android.widget.Toast;
 /**
  * 微信值守 · 手机端外壳。
  *
- * 就干一件事：把一个 WebView 钉在 电脑上的 /away 页面上，外加一个"设置服务器地址"的入口。
- * 页面本身（开始/结束/汇总/称呼）全在手机页里，这里不重复实现业务逻辑。
+ * 只做一件事：把一个 WebView 钉在电脑上的 /away 页面，外加一个"设置服务器地址"的入口。
+ * 页面本身（开始 / 结束 / 汇总 / 称呼）全在手机页里，这里不重复实现业务逻辑。
+ *
+ * 注意：这里刻意不用 lambda —— 编译时用 -bootclasspath android.jar，android.jar 里没有
+ * LambdaMetafactory，lambda 会直接编译失败。用匿名内部类最稳。
  */
 public class MainActivity extends Activity {
 
@@ -36,13 +38,12 @@ public class MainActivity extends Activity {
     private static final String KEY_URL = "pageUrl";
 
     private WebView web;
-    private FrameLayout root;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        root = new FrameLayout(this);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#0F1115"));
 
         web = new WebView(this);
@@ -114,36 +115,54 @@ public class MainActivity extends Activity {
                 .setTitle(firstRun ? "先设置服务器地址" : "设置服务器地址")
                 .setView(box)
                 .setCancelable(!firstRun)
-                .setPositiveButton("保存并打开", (d, w) -> {
-                    String url = input.getText().toString().trim();
-                    if (url.isEmpty()) {
-                        Toast.makeText(this, "地址不能为空", Toast.LENGTH_SHORT).show();
-                        return;
+                .setPositiveButton("保存并打开", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        String url = input.getText().toString().trim();
+                        if (url.isEmpty()) {
+                            Toast.makeText(MainActivity.this, "地址不能为空", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                            url = "http://" + url;
+                        }
+                        prefs().edit().putString(KEY_URL, url).apply();
+                        web.loadUrl(url);
                     }
-                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        url = "http://" + url;
-                    }
-                    prefs().edit().putString(KEY_URL, url).apply();
-                    web.loadUrl(url);
                 })
                 .setNegativeButton("取消", null);
 
         if (!firstRun) {
-            b.setNeutralButton("重新加载", (d, w) -> web.reload());
+            b.setNeutralButton("重新加载", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    web.reload();
+                }
+            });
         }
         b.show();
     }
 
-    /** 页面里的「设置」按钮/离线页可以调到这里。 */
+    /** 页面里的「设置」按钮 / 离线页可以调到这里。 */
     private class Bridge {
         @JavascriptInterface
         public void openSettings() {
-            runOnUiThread(() -> showSettings(false));
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    showSettings(false);
+                }
+            });
         }
 
         @JavascriptInterface
         public void reload() {
-            runOnUiThread(() -> web.reload());
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    web.reload();
+                }
+            });
         }
 
         @JavascriptInterface
