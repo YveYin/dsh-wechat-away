@@ -1107,7 +1107,7 @@ function Start-WizardUi {
                 $answer = [Microsoft.VisualBasic.Interaction]::InputBox(
                     '第一次使用，需要知道怎么称呼你。' + [Environment]::NewLine + [Environment]::NewLine +
                     '自动回复里会写成「我是<你的名字>的 AI 助手」。' + [Environment]::NewLine +
-                    '只问这一次，之后一直沿用；想改随时再点快捷方式。',
+                    '只问这一次，之后一直沿用。',
                     '微信值守 · 初次设置',
                     ''
                 )
