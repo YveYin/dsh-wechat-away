@@ -44,6 +44,10 @@ public class MainActivity extends Activity {
     private static final String ACTION_DISCONNECT = "com.tailscale.ipn.DISCONNECT_VPN";
 
     private WebView web;
+    private int retryLeft = 0;
+
+    /** 隧道建立要十几秒，页面加载失败时按退避重试几次，别一上来就甩错误页。 */
+    private static final int[] RETRY_DELAYS_MS = {3000, 4000, 5000, 6000};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,9 +76,24 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) {
-                    view.loadUrl("file:///android_asset/offline.html");
+                if (!request.isForMainFrame()) {
+                    return;
                 }
+                int index = RETRY_DELAYS_MS.length - retryLeft;
+                if (retryLeft > 0 && index >= 0 && index < RETRY_DELAYS_MS.length) {
+                    retryLeft--;
+                    final int delay = RETRY_DELAYS_MS[index];
+                    view.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (web != null) {
+                                web.reload();
+                            }
+                        }
+                    }, delay);
+                    return;
+                }
+                view.loadUrl("file:///android_asset/offline.html");
             }
         });
         web.setWebChromeClient(new WebChromeClient());
@@ -184,7 +203,8 @@ public class MainActivity extends Activity {
         // 打开 App 才连 VPN：Tailscale 的 IPNReceiver 是 exported 的，允许外部广播。
         boolean started = sendVpnCommand(ACTION_CONNECT);
         if (started && web != null) {
-            // 隧道建立有延迟，稍等再刷一次，避免首屏就是"连不上"。
+            // 第一次加载可能赶上隧道还没起来，给几次重试机会。
+            retryLeft = RETRY_DELAYS_MS.length;
             web.postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -192,7 +212,7 @@ public class MainActivity extends Activity {
                         web.reload();
                     }
                 }
-            }, 1800);
+            }, 2500);
         }
     }
 
