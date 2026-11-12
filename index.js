@@ -41,8 +41,8 @@ function resolveFromRoot(value) {
 const DEFAULT_SCRIPT_PATH = join(PLUGIN_ROOT, 'scripts', 'wx_ctl.ps1')
 /** 状态、快照、日志的存放目录。 */
 const DEFAULT_STATE_DIR = join(PLUGIN_ROOT, 'state')
-/** 默认的“本人”名字，用于回复模板。 */
-const DEFAULT_OWNER = '华一阳'
+/** 默认的“本人”名字。留空表示还没设置：首次运行由向导或手机页问一次，存进 state.ownerName。 */
+const DEFAULT_OWNER = ''
 
 /** 定时器 60 秒一跳，到点才真正扫描。 */
 const TICK_MS = 1_000
@@ -238,6 +238,8 @@ function defaultState() {
     deadlineNotified: false,
     startedAt: '',
     excludes: null,
+    /** 本人称呼：首次运行问一次后一直沿用（state 优先于配置）。 */
+    ownerName: '',
     intervalMinutes: null,
     lastScanAt: '',
     nextScanAt: '',
@@ -455,6 +457,7 @@ function normalizeState(raw) {
     until: typeof raw.until === 'string' ? raw.until : '',
     startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : '',
     excludes: Array.isArray(raw.excludes) ? normalizeExcludes(raw.excludes) : null,
+    ownerName: typeof raw.ownerName === 'string' ? raw.ownerName.trim().slice(0, 24) : '',
     intervalMinutes: Number.isFinite(raw.intervalMinutes) && raw.intervalMinutes > 0 ? raw.intervalMinutes : null,
     lastScanAt: typeof raw.lastScanAt === 'string' ? raw.lastScanAt : '',
     nextScanAt: typeof raw.nextScanAt === 'string' ? raw.nextScanAt : '',
@@ -1532,9 +1535,17 @@ export function createAwayPlugin(rawConfig, deps = {}) {
     return !/[\p{Script=Han}\p{L}\p{N}]/u.test(body)
   }
 
+  /** 回复里怎么称呼本人：state.ownerName（首次运行存下的）→ 配置 ownerName → 中性称呼。 */
+  function ownerLabel(state) {
+    const fromState = text(state !== null && typeof state === 'object' ? state.ownerName : '', '')
+    if (fromState !== '') return fromState
+    const fromConfig = text(config.ownerName, '')
+    return fromConfig !== '' ? fromConfig : '机主'
+  }
+
   /** 同一会话的第二条及以后来信，用这句兜底，不再复述活动。 */
   function buildFollowUpText(state) {
-    const owner = config.ownerName
+    const owner = ownerLabel(state)
     const when = state.until !== '' ? `${clockText(state.until)} 之后` : '等他回来'
     return `以上内容我都收到了，会转述给${owner}，${when}他看到后会回您。`
   }
@@ -1570,7 +1581,7 @@ export function createAwayPlugin(rawConfig, deps = {}) {
     // 原因为空时整段（连同前面的逗号）一起去掉，避免出现「，。」这种破句。
     const base = reason === '' ? template.replace(/\{reason\}，/gu, '') : template
     return base.replace(/\{(owner|activity|reason|when)\}/gu, (_match, key) => {
-      if (key === 'owner') return config.ownerName
+      if (key === 'owner') return ownerLabel(state)
       if (key === 'activity') return activity
       if (key === 'reason') return reason
       return when
@@ -2324,6 +2335,7 @@ export function createAwayPlugin(rawConfig, deps = {}) {
       ok: true,
       active,
       activity: state.activity,
+      ownerName: text(state.ownerName, text(config.ownerName, '')),
       until: state.until,
       startedAt: state.startedAt,
       nextScanAt: state.nextScanAt,
@@ -2508,6 +2520,17 @@ export function createAwayPlugin(rawConfig, deps = {}) {
       await logLine('info', `快捷方式开始值守：activity=${activity} mode=${mode} until=${untilAt !== '' ? untilAt : untilText} 结果=${result.active === true ? 'active' : 'inactive'}`)
       return
     }
+    if (action === 'set-owner') {
+      const ownerName = text(payload.ownerName, '').slice(0, 24)
+      if (ownerName === '') {
+        await logLine('warn', '设置本人称呼失败：内容为空')
+        return
+      }
+      state.ownerName = ownerName
+      await saveState(state)
+      await logLine('info', `已记住本人称呼：${ownerName}`)
+      return
+    }
     if (action === 'stop') {
       const result = await endAway(state, 'shortcut')
       await publishSummary(state, result.summary)
@@ -2653,6 +2676,7 @@ export function createAwayPlugin(rawConfig, deps = {}) {
               ok: { type: 'boolean', description: 'Whether the action succeeded.' },
               active: { type: 'boolean', description: 'Whether away mode is active after this call.' },
               activity: { type: 'string', description: 'The activity text currently used in auto-replies.' },
+              ownerName: { type: 'string', description: 'Owner name used in replies; empty means it was never set.' },
               until: { type: 'string', description: 'ISO deadline, or an empty string when there is none.' },
               startedAt: { type: 'string', description: 'ISO time this away session started.' },
               nextScanAt: { type: 'string', description: 'ISO time of the next scheduled scan.' },

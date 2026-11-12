@@ -103,6 +103,15 @@
   </div>
 </div>
 
+<div id="setup" class="card hidden">
+  <div class="state">第一次使用，先定个称呼</div>
+  <div class="hint" style="margin:8px 0 10px">
+    自动回复里会写成「我是<b>你的名字</b>的 AI 助手」。只问这一次，之后一直沿用（想改随时回来改）。
+  </div>
+  <input id="ownerInput" placeholder="例如：小明" autocomplete="off" maxlength="24">
+  <button id="ownerSave">保存并继续</button>
+</div>
+
 <div id="flow" class="hidden">
   <div class="steps"><i class="on" id="stepBar1"></i><i id="stepBar2"></i></div>
 
@@ -249,6 +258,9 @@
     }
     $('stateMeta').innerHTML = lines.join('<br>');
     show($('heartbeatWarn'), st.heartbeatOk === false);
+    if (!requireOwnerSetup(st) && !$('flow').classList.contains('hidden')) {
+      // 正在填值守流程时不要被首页抢回来。
+    }
     $('btnStop').disabled = !on;
     if (st.summary) {
       renderSummary(st.summary);
@@ -280,6 +292,18 @@
     });
   }
 
+  // 首次使用：state 里还没有称呼时，先让人填一次。
+  function requireOwnerSetup(st) {
+    var need = !st.ownerName || String(st.ownerName).trim() === '';
+    show($('setup'), need);
+    if (need) {
+      show($('home'), false);
+      show($('flow'), false);
+      show($('needToken'), false);
+    }
+    return need;
+  }
+
   function requireToken() {
     show($('needToken'), true);
     show($('home'), false);
@@ -294,6 +318,20 @@
   }
 
   // ---- 交互 ----
+  $('ownerSave').addEventListener('click', function () {
+    var name = $('ownerInput').value.trim();
+    if (name === '') { toast('先填一个称呼', true); return }
+    api('/away/set-owner', { method: 'POST', body: { ownerName: name } }).then(function () {
+      toast('记住了：' + name);
+      $('ownerInput').value = '';
+      show($('setup'), false);
+      show($('home'), true);
+      return loadStatus(true);
+    }).catch(function (err) {
+      toast('保存失败：' + err.message, true);
+    });
+  });
+
   $('tokenSave').addEventListener('click', function () {
     var v = $('tokenInput').value.trim();
     if (v.length < 16) { toast('配对码不对', true); return; }

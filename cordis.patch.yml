@@ -26,5 +26,6 @@
         # 黑名单：命中则强制只记录、不回复
         denySessions: []
         excludes: []
-        ownerName: '华一阳'
+        # 本人称呼。留空 = 首次运行时由向导/手机页问一次，存进 state.ownerName 后一直沿用。
+        ownerName: ''
         deadlineGraceMinutes: 10

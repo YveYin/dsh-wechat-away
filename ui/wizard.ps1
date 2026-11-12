@@ -1092,6 +1092,37 @@ function Start-WizardUi {
         }
     }
 
+    # 首次使用：问一次「怎么称呼你」，之后从 state.ownerName 一直沿用。
+    if (-not $DryRun) {
+        $ownerName = ''
+        try {
+            $current = Get-AwayState
+            if ($null -ne $current) { $ownerName = [string]$current.ownerName }
+        } catch {
+            $ownerName = ''
+        }
+        if ([string]::IsNullOrWhiteSpace($ownerName)) {
+            try {
+                Add-Type -AssemblyName Microsoft.VisualBasic
+                $answer = [Microsoft.VisualBasic.Interaction]::InputBox(
+                    '第一次使用，需要知道怎么称呼你。' + [Environment]::NewLine + [Environment]::NewLine +
+                    '自动回复里会写成「我是<你的名字>的 AI 助手」。' + [Environment]::NewLine +
+                    '只问这一次，之后一直沿用；想改随时再点快捷方式。',
+                    '微信值守 · 初次设置',
+                    ''
+                )
+                if (-not [string]::IsNullOrWhiteSpace($answer)) {
+                    $payload = @{ action = 'set-owner'; ownerName = $answer.Trim() }
+                    Write-AwayRequest $payload | Out-Null
+                    Start-Sleep -Milliseconds 600
+                    Write-UiLog ('首次设置本人称呼：{0}' -f $answer.Trim())
+                }
+            } catch {
+                Write-UiLog ('首次设置本人称呼失败：{0}' -f $_.Exception.Message)
+            }
+        }
+    }
+
     $script:C = @{
         Bg = [System.Drawing.ColorTranslator]::FromHtml('#F5F7FA')
         White = [System.Drawing.Color]::White

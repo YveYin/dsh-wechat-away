@@ -149,6 +149,7 @@ export async function startAwayWeb(options) {
         ok: true,
         active: state.active === true,
         activity: typeof state.activity === 'string' ? state.activity : '',
+        ownerName: typeof state.ownerName === 'string' ? state.ownerName : '',
         untilMode: typeof state.untilMode === 'string' ? state.untilMode : '',
         untilText: typeof state.untilText === 'string' ? state.untilText : '',
         until: typeof state.until === 'string' ? state.until : '',
@@ -200,6 +201,25 @@ export async function startAwayWeb(options) {
       const name = await writeRequest(payload)
       log(`网页端请求已提交：start ${activity}（${name}）`)
       sendJson(res, 200, { ok: true, request: name })
+      return
+    }
+
+    if (path === '/away/set-owner' && req.method === 'POST') {
+      let body
+      try {
+        body = await readBody(req)
+      } catch (error) {
+        sendJson(res, 400, { ok: false, error: String(error.message ?? error) })
+        return
+      }
+      const ownerName = typeof body.ownerName === 'string' ? body.ownerName.trim().slice(0, 24) : ''
+      if (ownerName === '') {
+        sendJson(res, 400, { ok: false, error: 'ownerName-required' })
+        return
+      }
+      const name = await writeRequest({ action: 'set-owner', ownerName })
+      log(`网页端请求已提交：set-owner ${ownerName}（${name}）`)
+      sendJson(res, 200, { ok: true, request: name, ownerName })
       return
     }
 

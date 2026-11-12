@@ -1,6 +1,6 @@
 # dsh-wechat-away
 
-> 离开电脑时，让 DeepSeek Harness 替你看着微信：有人来信就回一句「我是华一阳的 AI 助手…」，并把每条消息记到账上。
+> 离开电脑时，让 DeepSeek Harness 替你看着微信：有人来信就回一句「我是<你的名字>的 AI 助手…」，并把每条消息记到账上。
 
 这是一个 [DeepSeek Harness](https://github.com/deepseek-ai) 的 **Host 侧插件**。它不接管微信协议，而是通过 Windows UI Automation 与本机微信桌面版交互——读会话列表、判断有没有新消息、必要时切进会话把回复发出去。
 
@@ -52,7 +52,7 @@
 |---|---|---|
 | `scriptPath` | `./scripts/wx_ctl.ps1` | PowerShell 桥脚本位置 |
 | `stateDir` | `./state` | 状态、日志、inbox 的存放目录 |
-| `ownerName` | `华一阳` | 回复里「我是谁的 AI 助手」 |
+| `ownerName` | 空 | 回复里「我是谁的 AI 助手」。**留空时首次运行会问一次**（桌面向导弹框 / 手机页首屏），存进 `state.ownerName` 后一直沿用 |
 | `scanIntervalMinutes` | `0.033` | 巡检间隔（分钟），0.033≈2 秒 |
 | `cooldownMinutes` | `1` | 同一会话两次回复的最小间隔 |
 | `quietHours` | `[23, 7]` | 静默时段，只记录不回复 |
