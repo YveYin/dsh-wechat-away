@@ -9,6 +9,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.KeyEvent;
@@ -26,6 +27,7 @@ import android.widget.FrameLayout;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ProgressBar;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -170,15 +172,17 @@ public class MainActivity extends Activity {
         box.setBackgroundColor(Color.parseColor("#0B0D11"));
         box.setPadding((int) (28 * d), (int) (28 * d), (int) (28 * d), (int) (28 * d));
 
-        // 品牌图标：圆角方块 + 气泡
-        TextView mark = new TextView(this);
-        mark.setText("\uD83D\uDCAC");
-        mark.setTextSize(34f);
-        mark.setGravity(Gravity.CENTER);
+        // 品牌图标：圆角方块 + 矢量气泡（不依赖 emoji 字体，避免某些机器上渲染成黑白方块）
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.ic_bubble);
+        mark.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable markBg = new GradientDrawable();
+        markBg.setColor(Color.parseColor("#1B2230"));
+        markBg.setCornerRadius(20 * d);
+        mark.setBackground(markBg);
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams((int) (72 * d), (int) (72 * d));
         markLp.bottomMargin = (int) (20 * d);
         mark.setLayoutParams(markLp);
-        mark.setBackgroundColor(Color.parseColor("#1B2230"));
         box.addView(mark);
 
         ProgressBar bar = new ProgressBar(this);
