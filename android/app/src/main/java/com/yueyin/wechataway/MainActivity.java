@@ -3,6 +3,7 @@ package com.yueyin.wechataway;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -36,6 +37,11 @@ public class MainActivity extends Activity {
 
     private static final String PREFS = "away";
     private static final String KEY_URL = "pageUrl";
+
+    /** Tailscale 安卓端（com.tailscale.ipn）暴露的广播。 */
+    private static final String TAILSCALE_PACKAGE = "com.tailscale.ipn";
+    private static final String ACTION_CONNECT = "com.tailscale.ipn.CONNECT_VPN";
+    private static final String ACTION_DISCONNECT = "com.tailscale.ipn.DISCONNECT_VPN";
 
     private WebView web;
 
@@ -169,6 +175,43 @@ public class MainActivity extends Activity {
         public String currentUrl() {
             String u = prefs().getString(KEY_URL, "");
             return u == null ? "" : u;
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // 打开 App 才连 VPN：Tailscale 的 IPNReceiver 是 exported 的，允许外部广播。
+        boolean started = sendVpnCommand(ACTION_CONNECT);
+        if (started && web != null) {
+            // 隧道建立有延迟，稍等再刷一次，避免首屏就是"连不上"。
+            web.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (web != null) {
+                        web.reload();
+                    }
+                }
+            }, 1800);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // 离开 App 就断开，避免 VPN 常驻耗电。
+        sendVpnCommand(ACTION_DISCONNECT);
+    }
+
+    /** 给 Tailscale 发连接/断开广播；没装就静默失败。 */
+    private boolean sendVpnCommand(String action) {
+        try {
+            Intent intent = new Intent(action);
+            intent.setPackage(TAILSCALE_PACKAGE);
+            sendBroadcast(intent);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
