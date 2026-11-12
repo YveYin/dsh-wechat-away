@@ -1,0 +1,30 @@
+﻿# dsh-wechat-away bundle layer.
+#
+# 纯 Host 插件：加载本包的 ./index.js，注册 wechat_away / wechat_inbox /
+# wechat_scan_now 三个工具，并用 60 秒心跳驱动微信扫描；扫描有新增记录时
+# 追加摘要到 stateDir/digest.md 并弹一条 Windows 系统通知。没有 client 半。
+- insert:
+    - id: dsh-wechat-away
+      name: dsh-wechat-away
+      config:
+        enabled: true
+        # 扫描有新增记录 / 结束值守时是否弹 Windows 系统通知（关掉仍写 digest.md）
+        notify: true
+        # 相对路径以插件目录为基准，绝对路径原样使用
+        scriptPath: './scripts/wx_ctl.ps1'
+        stateDir: './state'
+        # 巡检间隔（分钟）：0.033 = 2 秒，越小发现越快，但会持续占用微信。
+        scanIntervalMinutes: 0.033
+        quietHours: [23, 7]
+        cooldownMinutes: 1
+        # 旧字段，与 autoReplyGroups 等价；两者任一为 true 才自动回复群聊
+        replyToGroups: false
+        # 群聊默认只记录；拿不准的会话也按群处理（宁可漏回私聊）
+        autoReplyGroups: false
+        # 白名单：命中则强制视为私聊，发送前不再二次确认
+        allowSessions: []
+        # 黑名单：命中则强制只记录、不回复
+        denySessions: []
+        excludes: []
+        ownerName: '华一阳'
+        deadlineGraceMinutes: 10

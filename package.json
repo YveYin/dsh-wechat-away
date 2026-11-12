@@ -1,0 +1,35 @@
+{
+  "name": "dsh-wechat-away",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WeChat away mode for DeepSeek Harness: periodically scan WeChat Desktop, auto-reply to new private chats with an AI-assistant notice, and log every message in a queryable inbox.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "wechat",
+    "away-mode",
+    "auto-reply",
+    "powershell"
+  ],
+  "license": "MIT",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

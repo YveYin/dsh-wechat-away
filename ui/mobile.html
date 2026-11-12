@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>微信值守</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1e222b;
+    --line: #2a2f3a;
+    --fg: #e8eaf0;
+    --dim: #9aa3b2;
+    --brand: #4f7cff;
+    --danger: #ff5a5f;
+    --ok: #2ecc71;
+    --warn: #f5a623;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: calc(12px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+    min-height: 100vh;
+  }
+  h1 { font-size: 19px; margin: 6px 0 14px; font-weight: 600; letter-spacing: .5px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 4px rgba(46,204,113,.15); }
+  .state { font-size: 17px; font-weight: 600; }
+  .meta { color: var(--dim); font-size: 14px; margin-top: 8px; line-height: 1.7; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  button {
+    width: 100%; border: 0; border-radius: 12px; padding: 16px; font-size: 17px;
+    font-weight: 600; color: #fff; background: var(--brand); margin-top: 12px;
+    font-family: inherit;
+  }
+  button.secondary { background: var(--card2); color: var(--fg); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; }
+  input {
+    width: 100%; padding: 15px 14px; font-size: 17px; color: var(--fg);
+    background: var(--card2); border: 1px solid var(--line); border-radius: 12px;
+    font-family: inherit;
+  }
+  input:focus { outline: none; border-color: var(--brand); }
+  label { display: block; font-size: 15px; color: var(--dim); margin: 4px 0 8px; }
+  .hint { color: var(--dim); font-size: 13px; margin-top: 8px; }
+  .preview { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--card2); font-size: 15px; }
+  .preview.bad { border: 1px solid var(--danger); color: #ffb3b5; }
+  .preview.good { border: 1px solid rgba(46,204,113,.45); }
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom));
+    background: #232833; border: 1px solid var(--line); color: var(--fg);
+    padding: 13px 15px; border-radius: 12px; font-size: 15px; opacity: 0;
+    transform: translateY(10px); transition: .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.bad { border-color: var(--danger); }
+  pre.summary {
+    white-space: pre-wrap; word-break: break-word; font-size: 13.5px; line-height: 1.75;
+    margin: 0; color: #cfd5e2; font-family: inherit;
+  }
+  pre.summary .who { color: #6fb7ff; font-weight: 700; }
+  pre.summary .who-2 { color: #b79bff; }
+  .hidden { display: none !important; }
+  .pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--card2); color: var(--dim); border: 1px solid var(--line); }
+  .pill.bad { color: #ffb3b5; border-color: rgba(255,90,95,.5); }
+  .steps { display: flex; gap: 6px; margin-bottom: 14px; }
+  .steps i { flex: 1; height: 3px; border-radius: 2px; background: var(--line); }
+  .steps i.on { background: var(--brand); }
+</style>
+</head>
+<body>
+
+<h1>微信值守 · 手机端</h1>
+
+<div id="needToken" class="card hidden">
+  <div class="state">需要配对码</div>
+  <div class="meta">第一次用需要把电脑上生成的配对码填进来，之后会自动记住。</div>
+  <label style="margin-top:14px">配对码</label>
+  <input id="tokenInput" placeholder="32 位十六进制" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="tokenSave">保存</button>
+</div>
+
+<div id="home" class="hidden">
+  <div class="card">
+    <div class="row"><span class="dot" id="stateDot"></span><span class="state" id="stateText">读取中…</span></div>
+    <div class="meta" id="stateMeta"></div>
+    <div id="heartbeatWarn" class="preview bad hidden">电脑上的 DSH 好像没在运行，点了会先尝试唤起它。</div>
+  </div>
+
+  <button id="btnStart">开启值守</button>
+  <button id="btnStop" class="secondary">结束值守</button>
+  <button id="btnSummary" class="secondary">看上次汇总</button>
+
+  <div class="card hidden" id="summaryCard" style="margin-top:14px">
+    <pre class="summary" id="summaryText"></pre>
+  </div>
+</div>
+
+<div id="flow" class="hidden">
+  <div class="steps"><i class="on" id="stepBar1"></i><i id="stepBar2"></i></div>
+
+  <div id="step1">
+    <label>你去干什么？</label>
+    <input id="activityInput" placeholder="例如：上实验课" autocomplete="off">
+    <div class="hint">会写进自动回复里：「他现在<span id="echoActivity">去干什么</span>，暂时没法回复」。</div>
+    <button id="btnNext">下一步</button>
+    <button id="btnCancel1" class="secondary">取消</button>
+  </div>
+
+  <div id="step2" class="hidden">
+    <label>什么时候回来？</label>
+    <input id="timeInput" placeholder="例如：21:30 / 一个半小时 / 90分钟" autocomplete="off">
+    <div class="preview" id="timePreview">填一个时间或时长</div>
+    <button id="btnGo">开始值守</button>
+    <button id="btnBack" class="secondary">上一步</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var KEY = 'wechatAwayToken';
+  var state = { token: '', status: null, activity: '', mode: '', untilAt: '', untilText: '', pastConfirmed: false };
+
+  function $(id) { return document.getElementById(id); }
+  function show(el, on) { el.classList.toggle('hidden', !on); }
+
+  function toast(text, bad) {
+    var el = $('toast');
+    el.textContent = text;
+    el.className = 'toast show' + (bad ? ' bad' : '');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.className = 'toast' + (bad ? ' bad' : ''); }, 2600);
+  }
+
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+  function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+  // ---- 时间解析：时刻 / 时长，中文数字也认 ----
+  var CN = { '零':0,'〇':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
+  function cnToNum(s) {
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    var total = 0, section = 0, last = 0;
+    for (var i = 0; i < s.length; i++) {
+      var ch = s[i];
+      if (ch === '十') { section = (section === 0 ? 1 : section) * 10; }
+      else if (ch === '百') { section = (section === 0 ? 1 : section) * 100; }
+      else if (CN[ch] !== undefined) { last = CN[ch]; section = section + last; }
+      else return NaN;
+    }
+    return section + total;
+  }
+  function normalizeNum(text) {
+    return text.replace(/[零〇一二两三四五六七八九十百]+/g, function (m) { return String(cnToNum(m)); });
+  }
+
+  function parseTime(raw) {
+    var s = (raw || '').trim().replace(/：/g, ':').replace(/\s+/g, '');
+    if (s === '') return { kind: 'none' };
+
+    var m;
+    // 3:45 / 15:30 / 3.45 / 3点45 / 三点四十五
+    m = s.match(/^(\d{1,2})[:.点时](\d{1,2})?分?$/);
+    if (m) {
+      var h = parseInt(m[1], 10);
+      var mi = m[2] === undefined ? 0 : parseInt(m[2], 10);
+      if (h > 23 || mi > 59) return { kind: 'bad', why: '这个时刻不存在' };
+      var now = new Date();
+      var at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mi, 0, 0);
+      return { kind: 'clock', at: at, past: at.getTime() <= now.getTime(), text: hhmm(at) };
+    }
+
+    // 纯时间词：上午9点 / 晚上9点 / 九点
+    m = s.match(/^(上午|早上|中午|下午|傍晚|晚上|夜里)?(\d{1,2}|[零〇一二两三四五六七八九十]+)点(半|\d{1,2}分?)?$/);
+    if (m) {
+      var hh = parseInt(normalizeNum(m[2] || ''), 10);
+      if (!isFinite(hh)) return { kind: 'bad', why: '没看懂这个钟点' };
+      var mm = m[3] === '半' ? 30 : (m[3] ? parseInt(normalizeNum(m[3]), 10) : 0);
+      if (m[1] && /下午|傍晚|晚上|夜里/.test(m[1]) && hh < 12) hh += 12;
+      if (m[1] === '中午' && hh < 11) hh += 12;
+      if (hh > 23 || mm > 59) return { kind: 'bad', why: '这个时刻不存在' };
+      var now2 = new Date();
+      var at2 = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate(), hh, mm, 0, 0);
+      return { kind: 'clock', at: at2, past: at2.getTime() <= now2.getTime(), text: hhmm(at2) };
+    }
+
+    // 时长：一个半小时 / 两小时 / 90分钟 / 半小时 / 45
+    var num = normalizeNum(s).replace(/个/g, '');
+    m = num.match(/^(\d+(?:\.\d+)?)半?小时$/);
+    if (m) {
+      var hours = parseFloat(m[1]) + (/半/.test(num) ? 0.5 : 0);
+      return { kind: 'duration', minutes: Math.round(hours * 60), text: raw.trim() };
+    }
+    m = num.match(/^半?小时$/);
+    if (m) return { kind: 'duration', minutes: 30, text: raw.trim() };
+    m = num.match(/^(\d+(?:\.\d+)?)分钟?$/);
+    if (m) return { kind: 'duration', minutes: Math.round(parseFloat(m[1])), text: raw.trim() };
+    m = num.match(/^(\d+(?:\.\d+)?)$/);
+    if (m) {
+      var v = parseFloat(m[1]);
+      // 纯数字：1~24 视为小时，其余视为分钟
+      return { kind: 'duration', minutes: Math.round(v <= 24 ? v * 60 : v), text: raw.trim(), guessed: v <= 24 ? 'hour' : 'minute' };
+    }
+    return { kind: 'bad', why: '没看懂，试试「21:30」或「一个半小时」' };
+  }
+
+  function api(path, options) {
+    var opts = options || {};
+    var headers = { 'x-away-token': state.token };
+    if (opts.body) headers['content-type'] = 'application/json';
+    return fetch(path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      cache: 'no-store'
+    }).then(function (res) {
+      if (res.status === 401) {
+        var err = new Error('unauthorized');
+        err.unauthorized = true;
+        throw err;
+      }
+      return res.json();
+    });
+  }
+
+  function renderStatus(st) {
+    state.status = st;
+    var on = st.active === true;
+    $('stateDot').className = 'dot' + (on ? ' on' : '');
+    $('stateText').textContent = on ? '正在值守' : '当前未值守';
+    var lines = [];
+    if (on) {
+      lines.push('活动：<b>' + escapeHtml(st.activity || '') + '</b>');
+      if (st.untilText) lines.push('回来时间：<b>' + escapeHtml(st.untilText) + '</b>');
+      else if (st.until) lines.push('回来时间：<b>' + hhmm(new Date(st.until)) + '</b>');
+      if (st.startedAt) lines.push('开始于：' + hhmm(new Date(st.startedAt)));
+      if (st.intervalMinutes) lines.push('巡检间隔：' + (st.intervalMinutes < 1 ? Math.round(st.intervalMinutes * 60) + ' 秒' : st.intervalMinutes + ' 分钟'));
+      $('btnStart').textContent = '重新开启值守（覆盖当前）';
+    } else {
+      $('btnStart').textContent = '开启值守';
+    }
+    $('stateMeta').innerHTML = lines.join('<br>');
+    show($('heartbeatWarn'), st.heartbeatOk === false);
+    $('btnStop').disabled = !on;
+    if (st.summary) {
+      renderSummary(st.summary);
+      $('summaryCard').classList.remove('hidden');
+    }
+  }
+
+  // 汇总里的用户名上色：把「◆【名字】」整段包成蓝色粗体，一条消息不染色。
+  function renderSummary(text) {
+    var html = escapeHtml(text).replace(/◆【([^】]+)】/g, function (_m, name) {
+      return '<span class="who">◆【' + name + '】</span>';
+    });
+    $('summaryText').innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function loadStatus(quiet) {
+    return api('/away/status').then(function (st) {
+      renderStatus(st);
+      if (!quiet && st.heartbeatOk === false) toast('电脑上的 DSH 没在运行', true);
+    }).catch(function (err) {
+      if (err.unauthorized) { requireToken(); return; }
+      if (!quiet) toast('读不到状态：' + err.message, true);
+    });
+  }
+
+  function requireToken() {
+    show($('needToken'), true);
+    show($('home'), false);
+    show($('flow'), false);
+  }
+
+  function enterApp() {
+    show($('needToken'), false);
+    show($('home'), true);
+    show($('flow'), false);
+    loadStatus(true);
+  }
+
+  // ---- 交互 ----
+  $('tokenSave').addEventListener('click', function () {
+    var v = $('tokenInput').value.trim();
+    if (v.length < 16) { toast('配对码不对', true); return; }
+    state.token = v;
+    localStorage.setItem(KEY, v);
+    enterApp();
+  });
+
+  $('btnStart').addEventListener('click', function () {
+    $('activityInput').value = localStorage.getItem('awayActivity') || '';
+    $('activityInput').focus();
+    show($('home'), false);
+    show($('flow'), true);
+    show($('step1'), true);
+    show($('step2'), false);
+    $('stepBar1').classList.add('on');
+    $('stepBar2').classList.remove('on');
+  });
+
+  $('btnCancel1').addEventListener('click', enterApp);
+
+  $('btnNext').addEventListener('click', function () {
+    var v = $('activityInput').value.trim();
+    if (v === '') { toast('先写你要去干什么', true); return; }
+    state.activity = v;
+    localStorage.setItem('awayActivity', v);
+    $('echoActivity').textContent = v;
+    show($('step1'), false);
+    show($('step2'), true);
+    $('stepBar2').classList.add('on');
+    $('timeInput').value = localStorage.getItem('awayUntil') || '';
+    $('timeInput').focus();
+    updatePreview();
+  });
+
+  $('btnBack').addEventListener('click', function () {
+    show($('step2'), false);
+    show($('step1'), true);
+    $('stepBar2').classList.remove('on');
+  });
+
+  function updatePreview() {
+    var raw = $('timeInput').value;
+    var p = parseTime(raw);
+    var el = $('timePreview');
+    var ok = true;
+    if (p.kind === 'none') { el.className = 'preview'; el.textContent = '填一个时间或时长'; ok = false; }
+    else if (p.kind === 'bad') { el.className = 'preview bad'; el.textContent = p.why; ok = false; }
+    else if (p.kind === 'clock') {
+      if (p.past) {
+        el.className = 'preview bad';
+        el.textContent = '现在已经过了 ' + p.text + '。你是说明天这个点吗？再点一次「开始值守」确认。';
+        ok = state.pastConfirmed === true;
+      } else {
+        el.className = 'preview good';
+        el.textContent = '→ 大概 ' + p.text + ' 回来（时刻）';
+        state.pastConfirmed = false;
+      }
+      state.mode = 'clock';
+      state.untilText = p.text;
+      state.untilAt = p.at.toISOString();
+    } else {
+      el.className = 'preview good';
+      var mm = p.minutes;
+      var label = mm >= 60 ? (Math.round(mm / 6) / 10 + ' 小时') : (mm + ' 分钟');
+      el.textContent = '→ 大概 ' + label + '后回来（时长）';
+      state.mode = 'duration';
+      state.minutes = mm;
+      state.untilText = p.text;
+      state.pastConfirmed = false;
+    }
+    if (p.kind === 'clock' && p.past && state.pastConfirmed !== true) {
+      $('btnGo').textContent = '确认（明天 ' + p.text + '）';
+      ok = true; // 允许点，但第一次点只做确认
+    } else {
+      $('btnGo').textContent = '开始值守';
+    }
+    $('btnGo').disabled = false;
+    state.canSubmit = ok;
+  }
+
+  var previewTimer = null;
+  $('timeInput').addEventListener('input', function () {
+    if (state.pastConfirmed) state.pastConfirmed = false;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(updatePreview, 120);
+  });
+
+  $('btnGo').addEventListener('click', function () {
+    var p = parseTime($('timeInput').value);
+    if (p.kind === 'none' || p.kind === 'bad') { toast(p.why || '先填时间', true); return; }
+    if (p.kind === 'clock' && p.past && state.pastConfirmed !== true) {
+      state.pastConfirmed = true;
+      var tomorrow = new Date(p.at.getTime() + 86400000);
+      state.untilAt = tomorrow.toISOString();
+      state.untilText = p.text;
+      $('timePreview').className = 'preview good';
+      $('timePreview').textContent = '→ 明天 ' + p.text + ' 回来（点「开始值守」确认）';
+      $('btnGo').textContent = '开始值守';
+      return;
+    }
+    localStorage.setItem('awayUntil', $('timeInput').value);
+    var body = { activity: state.activity, mode: state.mode, untilText: state.untilText };
+    if (state.mode === 'clock') body.untilAt = state.untilAt;
+    else body.durationMinutes = state.minutes;
+
+    $('btnGo').disabled = true;
+    api('/away/start', { method: 'POST', body: body }).then(function () {
+      toast('已提交，正在开始值守…');
+      setTimeout(function () {
+        enterApp();
+        $('btnGo').disabled = false;
+      }, 1800);
+    }).catch(function (err) {
+      $('btnGo').disabled = false;
+      if (err.unauthorized) { requireToken(); return; }
+      toast('提交失败：' + err.message, true);
+    });
+  });
+
+  $('btnStop').addEventListener('click', function () {
+    $('btnStop').disabled = true;
+    api('/away/stop', { method: 'POST', body: {} }).then(function () {
+      toast('已提交，正在结束…');
+      setTimeout(function () { loadStatus(true); $('btnStop').disabled = false; }, 2200);
+    }).catch(function (err) {
+      $('btnStop').disabled = false;
+      if (err.unauthorized) { requireToken(); return; }
+      toast('提交失败：' + err.message, true);
+    });
+  });
+
+  $('btnSummary').addEventListener('click', function () {
+    var card = $('summaryCard');
+    card.classList.toggle('hidden');
+    if (!card.classList.contains('hidden')) loadStatus(true);
+  });
+
+  // ---- 启动 ----
+  var urlToken = new URLSearchParams(location.search).get('k');
+  if (urlToken) {
+    state.token = urlToken;
+    localStorage.setItem(KEY, urlToken);
+    history.replaceState(null, '', location.pathname);
+  } else {
+    state.token = localStorage.getItem(KEY) || '';
+  }
+  if (state.token) enterApp(); else requireToken();
+
+  setInterval(function () { if (state.token && !$('home').classList.contains('hidden')) loadStatus(true); }, 5000);
+})();
+</script>
+</body>
+</html>

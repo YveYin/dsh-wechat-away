@@ -1,0 +1,23 @@
+# 运行期数据
+state/
+ui-data/
+
+# 依赖
+node_modules/
+
+# 临时文件
+*.bak*
+scripts/t_*.json
+scripts/list.json
+scripts/min_*.json
+scripts/probe.json
+scripts/t_*.ps1
+.tmp/
+
+# 编辑器
+.editorconfig
+.vscode/
+.idea/
+
+# 本地开发笔记
+RESUME.md
