@@ -771,12 +771,54 @@ function Set-SummaryColors {
     $rtb.Select(0, 0)
 }
 
+function Prompt-AwayOwnerName {
+    <# 弹一个输入框问称呼；返回空串表示取消。 #>
+    param([string]$Current = '')
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $answer = [Microsoft.VisualBasic.Interaction]::InputBox(
+        '怎么称呼你？' + [Environment]::NewLine + [Environment]::NewLine +
+        '自动回复里会写成「我是<你的名字>的 AI 助手」。' + [Environment]::NewLine +
+        '只问一次，之后一直沿用；想改随时点「改称呼」。',
+        '微信值守 · 称呼',
+        $Current
+    )
+    if ([string]::IsNullOrWhiteSpace($answer)) { return '' }
+    return $answer.Trim()
+}
+
+function Set-AwayOwnerInteractive {
+    <# 首页「改称呼」按钮：问一次、写进 requests、刷新按钮文案。 #>
+    $current = ''
+    try {
+        $st = Get-AwayState
+        if ($null -ne $st) { $current = [string]$st.ownerName }
+    } catch {
+        $current = ''
+    }
+    $name = Prompt-AwayOwnerName -Current $current
+    if ([string]::IsNullOrWhiteSpace($name)) { return }
+    try {
+        Write-AwayRequest @{ action = 'set-owner'; ownerName = $name } | Out-Null
+        Write-UiLog ('改称呼：{0}' -f $name)
+        Start-Sleep -Milliseconds 500
+        if ($script:BtnRename) { $script:BtnRename.Text = '改称呼（当前：' + $name + '）' }
+    } catch {
+        Write-UiLog ('改称呼失败：{0}' -f $_.Exception.Message)
+    }
+}
+
 function Update-HomeStatus {
     if (-not $script:StatusLabel) { return }
     if ($script:Busy) { return }
     try {
         $st = Get-AwayState
         $script:State = $st
+        if ($script:BtnRename) {
+            $own = ''
+            if ($null -ne $st) { $own = [string]$st.ownerName }
+            if ([string]::IsNullOrWhiteSpace($own)) { $script:BtnRename.Text = '设置称呼（还没填）' }
+            else { $script:BtnRename.Text = '改称呼（当前：' + $own + '）' }
+        }
         $active = [bool]($st -and ($st.active -eq $true))
         $script:IsActive = $active
 
@@ -1198,21 +1240,27 @@ function Start-WizardUi {
     $homeHint = New-UiLabel -Text '离开电脑时，DSH 会替你回复微信，并记录来信。' -X 0 -Y 0 -W 392 -H 22 -Size 9 -Kind 'muted'
     $script:PanelHome.Controls.Add($homeHint)
 
-    $script:BtnHomeStart = New-UiButton -Text '开启值守' -X 0 -Y 30 -W 392 -H 58 -Kind 'primary' -Size 12.5
+    $script:BtnHomeStart = New-UiButton -Text '开启值守' -X 0 -Y 28 -W 392 -H 54 -Kind 'primary' -Size 12.5
     $script:PanelHome.Controls.Add($script:BtnHomeStart)
 
-    $script:BtnHomeStop = New-UiButton -Text '结束值守' -X 0 -Y 100 -W 392 -H 48 -Kind 'danger' -Size 11.5
+    $script:BtnHomeStop = New-UiButton -Text '结束值守' -X 0 -Y 88 -W 392 -H 44 -Kind 'danger' -Size 11.5
     $script:PanelHome.Controls.Add($script:BtnHomeStop)
 
-    $script:LblHomeProgress = New-UiLabel -Text '' -X 0 -Y 154 -W 392 -H 20 -Size 9 -Kind 'accent'
+    $script:BtnRename = New-UiButton -Text '改称呼' -X 0 -Y 138 -W 392 -H 34 -Kind 'secondary' -Size 10
+    $script:BtnRename.Add_Click({
+        Set-AwayOwnerInteractive
+    })
+    $script:PanelHome.Controls.Add($script:BtnRename)
+
+    $script:LblHomeProgress = New-UiLabel -Text '' -X 0 -Y 178 -W 392 -H 20 -Size 9 -Kind 'accent'
     $script:LblHomeProgress.Visible = $false
     $script:PanelHome.Controls.Add($script:LblHomeProgress)
 
-    $script:LblHomeError = New-UiLabel -Text '' -X 0 -Y 154 -W 392 -H 42 -Size 9 -Kind 'danger' -Align 'TopLeft'
+    $script:LblHomeError = New-UiLabel -Text '' -X 0 -Y 178 -W 392 -H 42 -Size 9 -Kind 'danger' -Align 'TopLeft'
     $script:LblHomeError.Visible = $false
     $script:PanelHome.Controls.Add($script:LblHomeError)
 
-    $homeFoot = New-UiLabel -Text 'DSH 没在运行时，会自动帮你打开。' -X 0 -Y 197 -W 392 -H 18 -Size 8 -Kind 'muted'
+    $homeFoot = New-UiLabel -Text 'DSH 没在运行时，会自动帮你打开。' -X 0 -Y 221 -W 392 -H 18 -Size 8 -Kind 'muted'
     $script:PanelHome.Controls.Add($homeFoot)
 
     # ── 第一步 ──
