@@ -1306,3 +1306,46 @@ test('回复里的「看不了手机」要和活动自洽：上课→看不了�
   const phoneReply = await replyFor('在进行 USB 调试，手机被占用了')
   assert.doesNotMatch(phoneReply, /手机不在身边|暂时看不了手机/u, phoneReply)
 })
+
+test('补发一直失败：试满 3 次就放弃，只留一条失败记录，不再刷屏', async (t) => {
+  let rows = []
+  let clock = new Date(2026, 10, 12, 17, 0, 0).getTime()
+  let sendCount = 0
+  const { plugin, dir } = await newPlugin(t, {
+    watch: () => watchEnvelope(rows),
+    preflight: () => privateEnvelope,
+    read: () => readEnvelope([{ text: '在吗', dir: 'in' }]),
+    send: () => {
+      sendCount += 1
+      // 第一次（首轮回复）成功，之后补发全部失败，模拟会话已不在可见列表。
+      return sendCount === 1 ? sentEnvelope : { ok: true, data: { ok: true, mode: 'send', sent: false, error: 'session-not-found: 小明' } }
+    },
+  }, { cooldownMinutes: 1 }, { now: () => new Date(clock) })
+
+  await plugin.tools.away.execute({ action: 'start', activity: '在上实验课' })
+  rows = [watchRow('小明', { preview: '[1条] 在吗', time: '17:00' })]
+  await plugin.tools.scanNow.execute({})
+  assert.equal(sendCount, 1)
+
+  // 静默窗口里又来一条：入待补发队列。
+  clock += 20_000
+  rows = [watchRow('小明', { preview: '[2条] 顺便带瓶水', time: '17:00' })]
+  await plugin.tools.scanNow.execute({})
+
+  // 到点后连续三轮都发不出去。
+  clock += 60_000
+  await plugin.tools.scanNow.execute({})
+  await plugin.tools.scanNow.execute({})
+  await plugin.tools.scanNow.execute({})
+  assert.equal(sendCount, 4, '首轮回复 + 三次补发尝试')
+
+  // 放弃之后不再重试。
+  await plugin.tools.scanNow.execute({})
+  assert.equal(sendCount, 4, '放弃后不该继续重试')
+
+  const inbox = await readInbox(dir)
+  const giveUp = inbox.filter((r) => typeof r.reason === 'string' && r.reason.startsWith('follow-up-give-up'))
+  assert.equal(giveUp.length, 1, JSON.stringify(inbox, null, 2))
+  const spam = inbox.filter((r) => typeof r.reason === 'string' && r.reason.startsWith('follow-up-send-failed'))
+  assert.equal(spam.length, 0, '中间失败不该写 inbox')
+})

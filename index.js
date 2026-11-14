@@ -63,6 +63,8 @@ const PROBE_TIMEOUT_MS = 180_000
 /** 回复完收起会话面板的调用超时；实测 0.4~1.2s，5s 足够且绝不能拖住扫描。 */
 const DESELECT_TIMEOUT_MS = 5_000
 /** 读会话时取最近几条消息，用来挑出「对方最后说的那句」；只记录路径也要读到真实文本。 */
+/** 补发最多重试几次，超过就放弃并只记一条失败，避免每 2 秒刷一条 inbox。 */
+const FOLLOW_UP_MAX_TRIES = 3
 const SELF_UNREAD_TTL_MS = 10 * 60_000
 const READ_LIMIT = 20
 /** markunread 要滚列表找行、开右键菜单再点菜单项，比回复慢，单独给一个更宽的超时。 */
@@ -396,7 +398,8 @@ function normalizePendingFollowUp(raw) {
     if (value === null || typeof value !== 'object') continue
     const count = Number.isFinite(Number(value.count)) ? Math.max(0, Math.trunc(Number(value.count))) : 0
     if (count <= 0) continue
-    out[name] = { count, at: Number.isFinite(Number(value.at)) ? Number(value.at) : 0 }
+    const tries = Number.isFinite(Number(value.tries)) ? Math.max(0, Math.trunc(Number(value.tries))) : 0
+    out[name] = { count, at: Number.isFinite(Number(value.at)) ? Number(value.at) : 0, tries }
   }
   return out
 }
@@ -1707,6 +1710,8 @@ export function createAwayPlugin(rawConfig, deps = {}) {
         state.pendingFollowUp[title] = {
           count: (queued !== undefined ? queued.count : 0) + 1,
           at: nowDate().getTime(),
+          // 重试次数跨轮保留：失败不该因为又收到一条新消息就清零。
+          tries: queued !== undefined && Number.isFinite(Number(queued.tries)) ? Number(queued.tries) : 0,
         }
       }
       record.action = 'skipped'
@@ -1961,16 +1966,24 @@ export function createAwayPlugin(rawConfig, deps = {}) {
         })
         await logLine('info', `补发回复 ${title}：${text}`)
       } else {
-        out.push({
-          ts: at,
-          session: title,
-          message: `（静默窗口里补了 ${entry.count} 条）`,
-          kind: 'private',
-          action: 'failed',
-          reply: '',
-          reason: `follow-up-send-failed: ${sent.error}`,
-        })
-        await logLine('warn', `补发回复 ${title} 失败：${sent.error}`)
+        const tries = (Number.isFinite(Number(entry.tries)) ? Number(entry.tries) : 0) + 1
+        await logLine('warn', `补发回复 ${title} 失败（第 ${tries} 次）：${sent.error}`)
+        if (tries >= FOLLOW_UP_MAX_TRIES) {
+          // 放弃：这个人大概率已经不在可见列表里（置顶折叠/已删除），再试也只是刷屏。
+          delete state.pendingFollowUp[title]
+          out.push({
+            ts: at,
+            session: title,
+            message: `（补发 ${entry.count} 条，试了 ${tries} 次没发出去）`,
+            kind: 'private',
+            action: 'failed',
+            reply: '',
+            reason: `follow-up-give-up: ${sent.error}`,
+          })
+        } else {
+          // 中间失败不写 inbox，只把次数记回状态。
+          state.pendingFollowUp[title] = { count: entry.count, at: entry.at, tries }
+        }
       }
     }
     return out
