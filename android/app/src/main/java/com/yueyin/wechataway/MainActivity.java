@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private View loadingOverlay;
+    private boolean mainFrameFailed = false;
     private int retryLeft = 0;
 
     /** 隧道建立要十几秒，页面加载失败时按退避重试几次，别一上来就甩错误页。 */
@@ -95,8 +96,17 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                mainFrameFailed = false;
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
-                if (loadingOverlay != null && url != null && !url.startsWith("about:")) {
+                // 加载失败时 Chromium 也会回调 onPageFinished，此时不能撤掉遮罩，
+                // 否则会露出空白 WebView（那就是之前"黑屏"的原因）。
+                boolean offline = url != null && url.endsWith("offline.html");
+                boolean ok = !mainFrameFailed;
+                if (loadingOverlay != null && url != null && !url.startsWith("about:") && (ok || offline)) {
                     loadingOverlay.animate().alpha(0f).setDuration(180).withEndAction(new Runnable() {
                         @Override
                         public void run() {
@@ -114,6 +124,7 @@ public class MainActivity extends Activity {
                 if (!request.isForMainFrame()) {
                     return;
                 }
+                mainFrameFailed = true;
                 // 隧道还没起来时 WebView 会画自己那张白底错误页，用我们的遮罩盖住它。
                 showLoading();
                 int index = RETRY_DELAYS_MS.length - retryLeft;
@@ -149,6 +160,7 @@ public class MainActivity extends Activity {
         if (saved.isEmpty()) {
             showSettings(true);
         } else {
+            retryLeft = RETRY_DELAYS_MS.length;
             showLoading();
             web.loadUrl(saved);
         }
@@ -288,7 +300,14 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    web.reload();
+                    String saved = prefs().getString(KEY_URL, "").trim();
+                    if (saved.isEmpty()) {
+                        showSettings(false);
+                        return;
+                    }
+                    retryLeft = RETRY_DELAYS_MS.length;
+                    showLoading();
+                    web.loadUrl(saved);
                 }
             });
         }
