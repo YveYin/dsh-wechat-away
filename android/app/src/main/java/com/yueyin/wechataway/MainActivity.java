@@ -358,6 +358,8 @@ public class MainActivity extends Activity {
     }
 
     private void watchdogTick() {
+        // Tailscale 被系统杀掉后偶尔会拒收一次 CONNECT，心跳里补发，直到隧道真的起来。
+        sendVpnCommand(ACTION_CONNECT);
         alarmManager().cancel(disconnectIntent());
         alarmManager().set(AlarmManager.RTC_WAKEUP,
                 System.currentTimeMillis() + WATCHDOG_WINDOW_MS, disconnectIntent());
