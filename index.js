@@ -66,23 +66,6 @@ const DESELECT_TIMEOUT_MS = 5_000
 /** 补发最多重试几次，超过就放弃并只记一条失败，避免每 2 秒刷一条 inbox。 */
 const FOLLOW_UP_MAX_TRIES = 3
 
-/** 两次发送之间的最小间隔（含随机抖动），降低"机器人节奏"的特征。 */
-const DEFAULT_MIN_REPLY_GAP_MS = 8000
-/** 每条回复前的随机延迟区间，模拟人手打字的时间。 */
-const REPLY_DELAY_MIN_MS = 1500
-const REPLY_DELAY_MAX_MS = 4000
-/** 每人每天 / 全局每天最多自动回复多少条，防止一天刷太多被判定异常。 */
-const DEFAULT_DAILY_PER_PERSON = 20
-const DEFAULT_DAILY_TOTAL = 60
-/** 连续发送失败达到这个次数就自动停值守（熔断），避免越坏越试。 */
-const DEFAULT_FAILURE_BREAKER = 5
-
-/** 等一会儿；节流用。 */
-function sleep(ms) {
-  if (!(ms > 0)) return Promise.resolve()
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 /**
  * 发送前脱敏：手机号、身份证号、银行卡号一律打码。
  * inbox / digest / 日志 / 汇总都过这一层，免得把别人的隐私写在磁盘上。
@@ -243,12 +226,6 @@ function resolveConfig(raw) {
     denySessions: normalizeExcludes(value.denySessions),
     ownerName: text(value.ownerName, DEFAULT_OWNER),
     deadlineGraceMinutes: nonNegative(value.deadlineGraceMinutes, 10),
-    /** 发送节流与限额：0 表示关闭对应限制。 */
-    minReplyGapMs: nonNegative(value.minReplyGapMs, DEFAULT_MIN_REPLY_GAP_MS),
-    dailyLimitPerPerson: nonNegative(value.dailyLimitPerPerson, DEFAULT_DAILY_PER_PERSON),
-    dailyLimitTotal: nonNegative(value.dailyLimitTotal, DEFAULT_DAILY_TOTAL),
-    /** 连续失败熔断阈值。 */
-    failureBreaker: positive(value.failureBreaker, DEFAULT_FAILURE_BREAKER),
     /** 普通新消息的合并播报间隔（分钟）；紧急消息不受它限制。 */
     digestEveryMinutes: positive(value.digestEveryMinutes, 20),
     /** 是否弹 Windows 系统通知；关掉后仍然写 digest.md。 */
@@ -317,10 +294,6 @@ function defaultState() {
      * 且对方不再发新的，就补一条 follow-up 把这几条一起应答，避免"发了没人理"。
      */
     pendingFollowUp: {},
-    /** 最近发送记录 [{at, day, session}]：用来算最小间隔与每日额度。 */
-    sendLog: [],
-    /** 连续发送失败次数：达到阈值就熔断停值守。 */
-    failureStreak: 0,
   }
 }
 
@@ -518,30 +491,11 @@ function normalizeState(raw) {
     seenRows: normalizeSeen(raw.seenRows),
     selfUnread: normalizeSelfUnread(raw.selfUnread),
     pendingFollowUp: normalizePendingFollowUp(raw.pendingFollowUp),
-    sendLog: normalizeSendLog(raw.sendLog),
-    failureStreak: Number.isFinite(Number(raw.failureStreak)) ? Math.max(0, Math.trunc(Number(raw.failureStreak))) : 0,
     handled: normalizeHandled(raw.handled),
     sendFailures: normalizeFailures(raw.sendFailures),
     lastDigest: normalizeLastDigest(raw.lastDigest),
     pendingDigest: normalizePendingDigest(raw.pendingDigest),
   }
-}
-
-/** sendLog 的规范化：只认 {at, day, session}，最多留 400 条。 */
-function normalizeSendLog(raw) {
-  if (raw === null || raw === undefined || !Array.isArray(raw)) return []
-  const out = []
-  for (const value of raw) {
-    if (value === null || typeof value !== 'object') continue
-    const at = Number(value.at)
-    if (!Number.isFinite(at) || at <= 0) continue
-    out.push({
-      at,
-      day: typeof value.day === 'string' ? value.day : '',
-      session: typeof value.session === 'string' ? value.session : '',
-    })
-  }
-  return out.slice(-400)
 }
 
 /** inbox 一行记录的规范化，兼容手工编辑过的文件。 */
@@ -1420,39 +1374,6 @@ export function createAwayPlugin(rawConfig, deps = {}) {
   }
 
   /**
-   * 带节流的发送：检查每日额度 → 等到最小间隔 + 随机延迟 → 真正发送 → 记账。
-   * 返回 {ok, blocked?, error?}；blocked 表示被节流拦下（不是失败，不该计入熔断）。
-   */
-  async function sendWithPolicy(state, session, message) {
-    const dayKey = localDayKey(new Date())
-    const today = state.sendLog.filter((entry) => entry.day === dayKey)
-    if (config.dailyLimitPerPerson > 0
-      && today.filter((entry) => entry.session === session).length >= config.dailyLimitPerPerson) {
-      return { ok: false, blocked: 'daily-limit-person' }
-    }
-    if (config.dailyLimitTotal > 0 && today.length >= config.dailyLimitTotal) {
-      return { ok: false, blocked: 'daily-limit-total' }
-    }
-    const lastAt = state.sendLog.length > 0 ? state.sendLog[state.sendLog.length - 1].at : 0
-    // minReplyGapMs <= 0 视为关闭节流（连随机延迟也一起关，测试里才有意义）。
-    if (config.minReplyGapMs > 0) {
-      const wait = Math.max(0, config.minReplyGapMs - (nowDate().getTime() - lastAt))
-      const spread = Math.max(1, REPLY_DELAY_MAX_MS - REPLY_DELAY_MIN_MS)
-      const jitter = REPLY_DELAY_MIN_MS + Math.floor(Math.random() * spread)
-      await sleep(wait + jitter)
-    }
-    const sent = await bridgeSend(session, message)
-    if (sent.ok === true) {
-      state.failureStreak = 0
-      state.sendLog.push({ at: nowDate().getTime(), day: dayKey, session })
-      if (state.sendLog.length > 400) state.sendLog = state.sendLog.slice(-400)
-    } else {
-      state.failureStreak = (Number.isFinite(Number(state.failureStreak)) ? Number(state.failureStreak) : 0) + 1
-    }
-    return sent
-  }
-
-  /**
    * deselect 模式：把会话面板收起来，让微信回到「无选中会话」。
    * 回复完必须做这一步：微信会立刻把打开中的会话标已读，面板不收起来的话，
    * 刚回复的人再发消息也永远不会长红点，红点检测就看不到他。
@@ -1911,14 +1832,7 @@ export function createAwayPlugin(rawConfig, deps = {}) {
     }
 
     const replyText = repliedCount === 0 ? buildReplyText(state, title) : buildFollowUpText(state)
-    const sent = await sendWithPolicy(state, title, replyText)
-    if (sent.ok !== true && sent.blocked !== undefined) {
-      // 触到每日额度：只记账，不重试，也不计入失败熔断。
-      record.action = 'skipped'
-      record.reason = sent.blocked
-      await logLine('warn', `回复 ${title} 被节流拦下（${sent.blocked}）`)
-      return record
-    }
+    const sent = await bridgeSend(title, replyText)
     if (!sent.ok) {
       const attempts = failure !== undefined && stripMergedNotice(failure.text) === stripMergedNotice(incoming)
         ? failure.attempts + 1
@@ -2058,12 +1972,7 @@ export function createAwayPlugin(rawConfig, deps = {}) {
       if (Number.isNaN(lastAt)) continue
       if (now - lastAt < windowMs) continue
       const text = buildFollowUpText(state)
-      const sent = await sendWithPolicy(state, title, text)
-      if (sent.ok !== true && sent.blocked !== undefined) {
-        // 额度用尽时保留队列，等明天额度恢复再补，不算失败次数。
-        await logLine('warn', `补发 ${title} 被节流拦下（${sent.blocked}）`)
-        continue
-      }
+      const sent = await bridgeSend(title, text)
       const at = nowDate().toISOString()
       if (sent.ok === true) {
         delete state.pendingFollowUp[title]
@@ -2188,17 +2097,6 @@ export function createAwayPlugin(rawConfig, deps = {}) {
     // 先写状态（含 handled），再写 inbox：宁可少一条日志，也不要重复回复。
     await attempt('保存状态', () => scheduleNextScan(state))
     await attempt('写 inbox', () => appendRecords(records))
-
-    // 熔断：连续发送失败太多次，说明桥或微信已经不正常了，继续试只会刷屏。
-    if (state.active === true && config.failureBreaker > 0
-      && Number(state.failureStreak) >= config.failureBreaker) {
-      const streak = Number(state.failureStreak)
-      await logLine('error', `连续 ${streak} 次发送失败，自动结束值守（熔断）`)
-      notify('微信值守已自动停止', `连续 ${streak} 次回复失败，可能是微信窗口被关了或界面变了。`)
-      const ended = await endAway(state, 'failure-breaker')
-      await attempt('写汇总', () => publishSummary(state, ended.summary))
-      return { ...emptyScan(trigger), source, scannedAt, error: 'failure-breaker', autoStopped: true }
-    }
 
     const replied = records.filter((record) => record.action === 'replied').length
     const recorded = records.filter((record) => record.action === 'recorded').length
