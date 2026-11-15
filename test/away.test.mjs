@@ -101,6 +101,11 @@ async function newPlugin(t, handlers, config = {}, deps = {}) {
     cooldownMinutes: 0,
     scanIntervalMinutes: 30,
     autoReplyGroups: false,
+    // 测试默认关掉节流与额度，需要时在具体用例里覆盖。
+    minReplyGapMs: 0,
+    dailyLimitPerPerson: 0,
+    dailyLimitTotal: 0,
+    failureBreaker: 0,
     ...config,
   }, { callBridge: bridge, ...deps })
   await plugin.ready()
@@ -1348,4 +1353,64 @@ test('补发一直失败：试满 3 次就放弃，只留一条失败记录，�
   assert.equal(giveUp.length, 1, JSON.stringify(inbox, null, 2))
   const spam = inbox.filter((r) => typeof r.reason === 'string' && r.reason.startsWith('follow-up-send-failed'))
   assert.equal(spam.length, 0, '中间失败不该写 inbox')
+})
+
+test('脱敏：inbox 里不出现完整手机号/身份证号', async (t) => {
+  let rows = []
+  const { plugin, dir } = await newPlugin(t, {
+    watch: () => watchEnvelope(rows),
+    preflight: () => privateEnvelope,
+    read: () => readEnvelope([{ text: '我电话 13812345678，身份证 110101199003071234', dir: 'in' }]),
+    send: () => sentEnvelope,
+  }, { cooldownMinutes: 0 })
+
+  await plugin.tools.away.execute({ action: 'start', activity: '在开会' })
+  rows = [watchRow('小明', { preview: '[1条] 在吗', time: '10:00' })]
+  await plugin.tools.scanNow.execute({})
+
+  const inbox = await readInbox(dir)
+  const raw = JSON.stringify(inbox)
+  assert.equal(raw.includes('13812345678'), false, raw)
+  assert.equal(raw.includes('110101199003071234'), false, raw)
+  assert.ok(raw.includes('138****5678'), raw)
+})
+
+test('每人每日额度：超了就只记账，不再发', async (t) => {
+  let rows = []
+  let incoming = '在吗'
+  const { plugin, bridge } = await newPlugin(t, {
+    watch: () => watchEnvelope(rows),
+    preflight: () => privateEnvelope,
+    read: () => readEnvelope([{ text: incoming, dir: 'in' }]),
+    send: () => sentEnvelope,
+  }, { cooldownMinutes: 0, dailyLimitPerPerson: 1 })
+
+  await plugin.tools.away.execute({ action: 'start', activity: '在开会' })
+  rows = [watchRow('小明', { preview: '[1条] 在吗', time: '10:00' })]
+  await plugin.tools.scanNow.execute({})
+  assert.equal(bridge.calls.filter((call) => call.mode === 'send').length, 1)
+
+  incoming = '晚上一起吃饭吗'
+  rows = [watchRow('小明', { preview: '[2条] 晚上一起吃饭吗', time: '10:01' })]
+  const second = await plugin.tools.scanNow.execute({})
+  assert.equal(bridge.calls.filter((call) => call.mode === 'send').length, 1, '超额度不该再发')
+  assert.equal(second.details.some((d) => d.reason === 'daily-limit-person'), true, JSON.stringify(second.details))
+})
+
+test('熔断：连续失败到阈值就自动结束值守', async (t) => {
+  let rows = []
+  const { plugin } = await newPlugin(t, {
+    watch: () => watchEnvelope(rows),
+    preflight: () => privateEnvelope,
+    read: () => readEnvelope([{ text: '在吗', dir: 'in' }]),
+    send: () => ({ ok: true, data: { ok: true, mode: 'send', sent: false, error: '窗口没找到' } }),
+  }, { cooldownMinutes: 0, failureBreaker: 1 })
+
+  await plugin.tools.away.execute({ action: 'start', activity: '在开会' })
+  rows = [watchRow('小明', { preview: '[1条] 在吗', time: '10:00' })]
+  await plugin.tools.scanNow.execute({})
+
+  const status = await plugin.tools.away.execute({ action: 'status' })
+  assert.equal(status.active, false, JSON.stringify(status))
+  assert.match(status.summary, /上次值守结束于/u)
 })

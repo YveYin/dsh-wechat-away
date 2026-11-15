@@ -61,6 +61,10 @@
 | `allowSessions` | `[]` | 会话名白名单，强制当私聊 |
 | `webPort` | `4318` | 手机端网页端口，0=关闭 |
 | `deadlineGraceMinutes` | `10` | 到点提醒的宽限 |
+| `minReplyGapMs` | `8000` | 两次发送的最小间隔；每条另有 1.5–4 秒随机延迟，0=关闭节流 |
+| `dailyLimitPerPerson` | `20` | 同一人每天最多自动回复条数，0=不限 |
+| `dailyLimitTotal` | `60` | 全局每天最多自动回复条数，0=不限 |
+| `failureBreaker` | `5` | 连续发送失败达到该次数就自动结束值守 |
 
 ## 已知限制
 

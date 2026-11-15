@@ -29,3 +29,11 @@
         # 本人称呼。留空 = 首次运行时由向导/手机页问一次，存进 state.ownerName 后一直沿用。
         ownerName: ''
         deadlineGraceMinutes: 10
+        # 发送节流：两次发送的最小间隔（毫秒）+ 每条前的随机延迟，模仿人手节奏。
+        # 设为 0 表示关闭节流（连随机延迟一起关）。
+        minReplyGapMs: 8000
+        # 每日额度：同一人 / 全局每天最多自动回复多少条，0 = 不限。
+        dailyLimitPerPerson: 20
+        dailyLimitTotal: 60
+        # 熔断：连续发送失败达到这个次数就自动结束值守，避免越坏越试。
+        failureBreaker: 5
